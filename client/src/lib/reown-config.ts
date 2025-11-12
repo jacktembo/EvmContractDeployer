@@ -12,7 +12,7 @@ import { createConfig, http } from 'wagmi';
 import * as viemChains from 'viem/chains';
 
 // Get Reown Project ID from environment variable
-const projectId = import.meta.env.VITE_REOWN_PROJECT_ID;
+const projectId = 'b7f8a054dd86d3fbfa2e7d3d9a477a9e';
 
 if (!projectId) {
   console.warn('VITE_REOWN_PROJECT_ID is not defined. Wallet connection features will be disabled. Please set up your Reown Project ID in environment variables to enable wallet connections.');
