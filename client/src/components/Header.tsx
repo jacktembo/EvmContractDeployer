@@ -14,7 +14,6 @@ import { ThemeToggle } from "@/components/ThemeToggle";
 import { useToast } from "@/hooks/use-toast";
 import type { Network } from "@shared/schema";
 import { NETWORKS } from "@shared/schema";
-import { useAppKit, useAppKitAccount } from "@reown/appkit/react";
 import logoImage from "@assets/generated_images/Smart_contract_platform_logo_3e5930d9.png";
 
 interface HeaderProps {
@@ -22,30 +21,26 @@ interface HeaderProps {
   onSelectNetwork: (network: Network) => void;
 }
 
+const hasReownProjectId = Boolean(import.meta.env.VITE_REOWN_PROJECT_ID);
+
 export function Header({
   selectedNetwork,
   onSelectNetwork,
 }: HeaderProps) {
-  const { open } = useAppKit();
-  const { address, isConnected } = useAppKitAccount();
   const { toast } = useToast();
   const [copiedAddress, setCopiedAddress] = useState(false);
+  
+  const handleConnectWallet = () => {
+    toast({
+      description: "Please set VITE_REOWN_PROJECT_ID environment variable to enable wallet connection.",
+      variant: "destructive",
+    });
+  };
   
   const truncateAddress = (addr: string) => {
     return `${addr.slice(0, 6)}...${addr.slice(-4)}`;
   };
 
-  const handleCopyAddress = async (e: React.MouseEvent) => {
-    e.stopPropagation();
-    if (address) {
-      await navigator.clipboard.writeText(address);
-      setCopiedAddress(true);
-      toast({
-        description: "Address copied to clipboard",
-      });
-      setTimeout(() => setCopiedAddress(false), 2000);
-    }
-  };
 
   const ethereumNetworks = NETWORKS.filter((n) => n.category === "ethereum");
   const layer2Networks = NETWORKS.filter((n) => n.category === "layer2");
@@ -137,32 +132,16 @@ export function Header({
 
           <ThemeToggle />
 
-          {isConnected && address ? (
-            <div className="flex items-center gap-1">
-              <Badge 
-                variant="secondary" 
-                className="gap-2 px-3 min-h-9 hover-elevate cursor-pointer" 
-                data-testid="badge-wallet-connected" 
-                onClick={() => open()}
-              >
-                <div className="h-2 w-2 rounded-full bg-green-500" />
-                <span className="font-mono text-sm">{truncateAddress(address)}</span>
-              </Badge>
-              <Button
-                variant="ghost"
-                size="icon"
-                onClick={handleCopyAddress}
-                data-testid="button-copy-address"
-              >
-                {copiedAddress ? (
-                  <Check className="h-4 w-4 text-green-500" />
-                ) : (
-                  <Copy className="h-4 w-4" />
-                )}
-              </Button>
-            </div>
-          ) : (
+          {hasReownProjectId ? (
             <appkit-button data-testid="button-connect-wallet" />
+          ) : (
+            <Button
+              variant="outline"
+              onClick={handleConnectWallet}
+              data-testid="button-connect-wallet"
+            >
+              Connect Wallet
+            </Button>
           )}
         </div>
       </div>

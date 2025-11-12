@@ -1,0 +1,25 @@
+[Unit]
+Description=EVM Smart Contract Deployment Platform
+Documentation=https://github.com/yourusername/evm-contracts
+After=network.target postgresql.service
+
+[Service]
+Type=simple
+User=www-data
+WorkingDirectory=/var/www/evm-contracts
+Environment=NODE_ENV=production
+ExecStart=/usr/bin/node /var/www/evm-contracts/dist/index.js
+Restart=on-failure
+RestartSec=10
+StandardOutput=append:/var/log/evm-contracts/output.log
+StandardError=append:/var/log/evm-contracts/error.log
+
+# Security settings
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=true
+ReadWritePaths=/var/www/evm-contracts/logs
+
+[Install]
+WantedBy=multi-user.target
