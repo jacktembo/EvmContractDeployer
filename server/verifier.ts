@@ -1,4 +1,5 @@
 import { NETWORKS, type Network } from "@shared/schema";
+import { config } from "../config";
 
 interface VerificationPayload {
   contractAddress: string;
@@ -16,7 +17,7 @@ export class ContractVerifier {
   private readonly ETHERSCAN_V2_BASE_URL = 'https://api.etherscan.io/v2/api';
 
   private getApiKey(): string | null {
-    return process.env.ETHERSCAN_API_KEY || null;
+    return config.ETHERSCAN_API_KEY;
   }
 
   async verifyContract(payload: VerificationPayload): Promise<{
