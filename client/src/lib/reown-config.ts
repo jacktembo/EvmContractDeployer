@@ -3,6 +3,7 @@
  * - Only initialize in browser (prevents Node/server WebSocket/TLS issues)
  * - Use cloud relay only for DEV/localhost
  * - In production, metadata.url = window.location.origin (must be whitelisted in Reown)
+ * - Ensure autoConnect is disabled to avoid repeated MetaMask signing prompts
  */
 
 import { createAppKit } from '@reown/appkit/react';
@@ -22,7 +23,8 @@ import {
   avalancheFuji,
   type AppKitNetwork
 } from '@reown/appkit/networks';
-import { cookieStorage, createStorage } from 'wagmi';
+import { createConfig } from 'wagmi';
+import * as viemChains from 'viem/chains';
 import { clientConfig } from '../config';
 
 // Project ID source (client config preferred; Vite env fallback)
@@ -31,7 +33,8 @@ const projectId = clientConfig?.REOWN_PROJECT_ID ?? import.meta.env.VITE_REOWN_P
 // Origins / relay selection
 const origin = typeof window !== 'undefined' ? window.location.origin : '';
 const isLocal = origin.includes('localhost') || origin.includes('127.0.0.1');
-const metadataUrl = import.meta.env.PROD ? origin : 'https://cloud.reown.com';
+const useCloudRelay = import.meta.env.DEV || isLocal;
+const metadataUrl = import.meta.env.PROD ? origin : (useCloudRelay ? 'https://cloud.reown.com' : origin);
 
 // metadata MUST match the domain registered in Reown dashboard when running PROD
 const metadata = {
@@ -56,51 +59,94 @@ const networks: [AppKitNetwork, ...AppKitNetwork[]] = [
   avalancheFuji
 ];
 
+// fallback wagmi config (no autoConnect)
+const makeFallbackConfig = () =>
+  createConfig({
+    autoConnect: false,
+    chains: [
+      viemChains.mainnet,
+      viemChains.sepolia,
+      viemChains.bsc,
+      viemChains.bscTestnet,
+      viemChains.polygon,
+      viemChains.polygonAmoy,
+      viemChains.arbitrum,
+      viemChains.arbitrumSepolia,
+      viemChains.optimism,
+      viemChains.optimismSepolia,
+      viemChains.avalanche,
+      viemChains.avalancheFuji
+    ]
+  });
+
 let wagmiAdapter: WagmiAdapter | null = null;
+let config: any = makeFallbackConfig();
+let appKitInstance: any = null;
 
-// Only initialize in browser and only once (singleton)
-if (typeof window !== 'undefined' && projectId && projectId.trim() !== '') {
+// Only initialize in browser and only once (singleton) to avoid repeated prompts
+if (typeof window !== 'undefined') {
   const globalAny = window as any;
-  
-  if (!globalAny.__REOWN_APPKIT_INSTANCE) {
-    try {
-      // Create WagmiAdapter with proper config
-      wagmiAdapter = new WagmiAdapter({
-        networks,
-        projectId
-      });
+  if (!globalAny.__REOWN_APPKIT_INITIALIZED) {
+    globalAny.__REOWN_APPKIT_INITIALIZED = true;
 
-      // Create AppKit instance
-      const appKit = createAppKit({
-        adapters: [wagmiAdapter],
-        projectId,
-        networks,
-        metadata,
-        features: {
-          analytics: false,
-          email: false,
-          socials: []
+    if (!projectId || projectId.trim() === '') {
+      console.warn(
+        '[Reown] REOWN_PROJECT_ID not set. Wallet connections disabled. To enable, set REOWN_PROJECT_ID and whitelist your production domain in Reown dashboard.'
+      );
+      config = makeFallbackConfig();
+    } else {
+      try {
+        wagmiAdapter = new WagmiAdapter({
+          networks,
+          projectId
+        });
+
+        // CRITICAL FIX: enforce autoConnect: false on wagmi config to prevent infinite prompts
+        if (wagmiAdapter?.wagmiConfig) {
+          wagmiAdapter.wagmiConfig = {
+            ...wagmiAdapter.wagmiConfig,
+            autoConnect: false
+          };
         }
-      });
 
-      // Store in global to prevent re-initialization
-      globalAny.__REOWN_APPKIT_INSTANCE = appKit;
-      globalAny.__REOWN_WAGMI_ADAPTER = wagmiAdapter;
-      
-      console.log('[Reown] AppKit initialized successfully');
-    } catch (err) {
-      console.error('[Reown] Failed to initialize AppKit:', err);
+        appKitInstance = createAppKit({
+          adapters: [wagmiAdapter],
+          projectId,
+          networks,
+          metadata,
+          features: {
+            analytics: false,
+            email: false,
+            socials: [],
+            // CRITICAL FIX: Disable features that trigger automatic signatures
+            swaps: false,
+            onramp: false
+          },
+          // CRITICAL FIX: Explicitly enable connectors without SIWE
+          enableWalletConnect: true,
+          enableInjected: true,
+          enableCoinbase: true
+        });
+
+        config = wagmiAdapter.wagmiConfig ?? makeFallbackConfig();
+        
+        // Store config for reuse
+        globalAny.__REOWN_WAGMI_CONFIG = config;
+        
+        console.log('[Reown] AppKit initialized (autoConnect: false, SIWE: disabled)');
+      } catch (err) {
+        console.error('[Reown] Failed to initialize AppKit — wallet connections disabled:', err);
+        config = makeFallbackConfig();
+      }
     }
   } else {
-    // Reuse existing adapter
-    wagmiAdapter = globalAny.__REOWN_WAGMI_ADAPTER;
+    // reuse existing config (hot reload / multiple modules)
+    config = (globalAny.__REOWN_WAGMI_CONFIG ?? config) as any;
   }
-} else if (typeof window !== 'undefined') {
-  console.warn(
-    '[Reown] REOWN_PROJECT_ID not set. Wallet connections disabled. To enable, set REOWN_PROJECT_ID and whitelist your production domain in Reown dashboard.'
-  );
+
+  try {
+    (window as any).__REOWN_WAGMI_CONFIG = config;
+  } catch {}
 }
 
-// Export the wagmi config (will be null if not initialized)
-export const config = wagmiAdapter?.wagmiConfig ?? null;
-export { wagmiAdapter };
+export { wagmiAdapter, config };
