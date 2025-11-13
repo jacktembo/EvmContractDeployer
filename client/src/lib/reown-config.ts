@@ -23,8 +23,8 @@ import {
   avalancheFuji,
   type AppKitNetwork
 } from '@reown/appkit/networks';
-import { createConfig } from 'wagmi';
-import * as viemChains from 'viem/chains';
+import { http, createConfig } from 'wagmi';
+import { injected, walletConnect } from 'wagmi/connectors';
 import { clientConfig } from '../config';
 
 // Project ID source (client config preferred; Vite env fallback)
@@ -59,24 +59,41 @@ const networks: [AppKitNetwork, ...AppKitNetwork[]] = [
   avalancheFuji
 ];
 
-// fallback wagmi config (no autoConnect)
+// Map AppKit networks to wagmi chains
+const wagmiChains = [
+  mainnet,
+  sepolia,
+  bsc,
+  bscTestnet,
+  polygon,
+  polygonAmoy,
+  arbitrum,
+  arbitrumSepolia,
+  optimism,
+  optimismSepolia,
+  avalanche,
+  avalancheFuji
+] as const;
+
+// fallback wagmi config (minimal, working config)
 const makeFallbackConfig = () =>
   createConfig({
-    autoConnect: false,
-    chains: [
-      viemChains.mainnet,
-      viemChains.sepolia,
-      viemChains.bsc,
-      viemChains.bscTestnet,
-      viemChains.polygon,
-      viemChains.polygonAmoy,
-      viemChains.arbitrum,
-      viemChains.arbitrumSepolia,
-      viemChains.optimism,
-      viemChains.optimismSepolia,
-      viemChains.avalanche,
-      viemChains.avalancheFuji
-    ]
+    chains: wagmiChains,
+    connectors: [injected()],
+    transports: {
+      [mainnet.id]: http(),
+      [sepolia.id]: http(),
+      [bsc.id]: http(),
+      [bscTestnet.id]: http(),
+      [polygon.id]: http(),
+      [polygonAmoy.id]: http(),
+      [arbitrum.id]: http(),
+      [arbitrumSepolia.id]: http(),
+      [optimism.id]: http(),
+      [optimismSepolia.id]: http(),
+      [avalanche.id]: http(),
+      [avalancheFuji.id]: http()
+    }
   });
 
 let wagmiAdapter: WagmiAdapter | null = null;
@@ -86,7 +103,13 @@ let appKitInstance: any = null;
 // Only initialize in browser and only once (singleton) to avoid repeated prompts
 if (typeof window !== 'undefined') {
   const globalAny = window as any;
-  if (!globalAny.__REOWN_APPKIT_INITIALIZED) {
+  
+  // Check if already initialized
+  if (globalAny.__REOWN_WAGMI_CONFIG && globalAny.__REOWN_WAGMI_ADAPTER) {
+    config = globalAny.__REOWN_WAGMI_CONFIG;
+    wagmiAdapter = globalAny.__REOWN_WAGMI_ADAPTER;
+    console.log('[Reown] Reusing existing AppKit instance');
+  } else if (!globalAny.__REOWN_APPKIT_INITIALIZED) {
     globalAny.__REOWN_APPKIT_INITIALIZED = true;
 
     if (!projectId || projectId.trim() === '') {
@@ -96,52 +119,48 @@ if (typeof window !== 'undefined') {
       config = makeFallbackConfig();
     } else {
       try {
+        console.log('[Reown] Initializing AppKit with projectId:', projectId.substring(0, 8) + '...');
+        
+        // Create WagmiAdapter with minimal config
         wagmiAdapter = new WagmiAdapter({
           networks,
           projectId
         });
 
-        // CRITICAL FIX: enforce autoConnect: false on wagmi config to prevent infinite prompts
-        if (wagmiAdapter?.wagmiConfig) {
-          wagmiAdapter.wagmiConfig = {
-            ...wagmiAdapter.wagmiConfig,
-            autoConnect: false
-          };
-        }
+        console.log('[Reown] WagmiAdapter created');
 
+        // Create AppKit instance
         appKitInstance = createAppKit({
           adapters: [wagmiAdapter],
           projectId,
           networks,
           metadata,
           features: {
-            analytics: false,
-            email: false,
-            socials: [],
-            // CRITICAL FIX: Disable features that trigger automatic signatures
-            swaps: false,
-            onramp: false
-          },
-          // CRITICAL FIX: Explicitly enable connectors without SIWE
-          enableWalletConnect: true,
-          enableInjected: true,
-          enableCoinbase: true
+            analytics: false
+          }
         });
 
-        config = wagmiAdapter.wagmiConfig ?? makeFallbackConfig();
+        console.log('[Reown] AppKit instance created');
+
+        // Get the config from adapter
+        if (wagmiAdapter?.wagmiConfig) {
+          config = wagmiAdapter.wagmiConfig;
+          console.log('[Reown] Using wagmiConfig from adapter');
+        } else {
+          console.warn('[Reown] No wagmiConfig from adapter, using fallback');
+          config = makeFallbackConfig();
+        }
         
         // Store config for reuse
         globalAny.__REOWN_WAGMI_CONFIG = config;
+        globalAny.__REOWN_WAGMI_ADAPTER = wagmiAdapter;
         
-        console.log('[Reown] AppKit initialized (autoConnect: false, SIWE: disabled)');
+        console.log('[Reown] AppKit initialized successfully');
       } catch (err) {
         console.error('[Reown] Failed to initialize AppKit — wallet connections disabled:', err);
         config = makeFallbackConfig();
       }
     }
-  } else {
-    // reuse existing config (hot reload / multiple modules)
-    config = (globalAny.__REOWN_WAGMI_CONFIG ?? config) as any;
   }
 
   try {
