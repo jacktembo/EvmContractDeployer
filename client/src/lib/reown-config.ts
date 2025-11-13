@@ -75,11 +75,19 @@ const wagmiChains = [
   avalancheFuji
 ] as const;
 
-// fallback wagmi config (minimal, working config)
+/**
+ * Build a minimal, safe fallback wagmi config.
+ * IMPORTANT: autoConnect: false prevents wagmi from silently reconnecting on page load,
+ * which is a typical cause of repeated signature / permission prompts.
+ */
 const makeFallbackConfig = () =>
   createConfig({
+    autoConnect: false, // <- explicitly disable auto connect
     chains: wagmiChains,
-    connectors: [injected()],
+    connectors: [
+      // keep injected as the minimal connector; shimDisconnect reduces some re-prompt behavior
+      injected({ shimDisconnect: true })
+    ],
     transports: {
       [mainnet.id]: http(),
       [sepolia.id]: http(),
@@ -103,8 +111,8 @@ let appKitInstance: any = null;
 // Only initialize in browser and only once (singleton) to avoid repeated prompts
 if (typeof window !== 'undefined') {
   const globalAny = window as any;
-  
-  // Check if already initialized
+
+  // Reuse previously stored config/adapter if present
   if (globalAny.__REOWN_WAGMI_CONFIG && globalAny.__REOWN_WAGMI_ADAPTER) {
     config = globalAny.__REOWN_WAGMI_CONFIG;
     wagmiAdapter = globalAny.__REOWN_WAGMI_ADAPTER;
@@ -120,11 +128,36 @@ if (typeof window !== 'undefined') {
     } else {
       try {
         console.log('[Reown] Initializing AppKit with projectId:', projectId.substring(0, 8) + '...');
-        
-        // Create WagmiAdapter with minimal config
+
+        // Create WagmiAdapter with minimal config.
+        // Note: We intentionally do NOT autoConnect anywhere.
+        // Build connectors array: injected always available; WalletConnect only if we have a projectId and cloud relay allowed.
+        const connectors = [
+          injected({ shimDisconnect: true })
+        ];
+
+        // Add WalletConnect only if projectId and cloud relay allowed (avoids unnecessary initializations)
+        if (projectId && (useCloudRelay || import.meta.env.DEV)) {
+          try {
+            connectors.push(
+              walletConnect({
+                projectId,
+                // don't enable auto connect behavior here (walletConnect connector config varies by wagmi version)
+                // For walletConnect v2 + wagmi, you may need to pass additional options (relayUrl, metadata).
+                // We'll let the WagmiAdapter handle specifics, but avoid automatically calling connect anywhere.
+                showQrModal: true
+              } as any)
+            );
+            console.log('[Reown] WalletConnect connector added');
+          } catch (wcErr) {
+            console.warn('[Reown] Could not create WalletConnect connector:', wcErr);
+          }
+        }
+
         wagmiAdapter = new WagmiAdapter({
           networks,
           projectId
+          // WagmiAdapter should not autoConnect itself — we leave autoConnect false in configs.
         });
 
         console.log('[Reown] WagmiAdapter created');
@@ -142,19 +175,22 @@ if (typeof window !== 'undefined') {
 
         console.log('[Reown] AppKit instance created');
 
-        // Get the config from adapter
+        // Get the config from adapter (if provided). Ensure autoConnect is explicitly set false.
         if (wagmiAdapter?.wagmiConfig) {
-          config = wagmiAdapter.wagmiConfig;
-          console.log('[Reown] Using wagmiConfig from adapter');
+          config = {
+            ...wagmiAdapter.wagmiConfig,
+            autoConnect: false
+          };
+          console.log('[Reown] Using wagmiConfig from adapter (autoConnect disabled)');
         } else {
           console.warn('[Reown] No wagmiConfig from adapter, using fallback');
           config = makeFallbackConfig();
         }
-        
-        // Store config for reuse
+
+        // Store config & adapter for reuse
         globalAny.__REOWN_WAGMI_CONFIG = config;
         globalAny.__REOWN_WAGMI_ADAPTER = wagmiAdapter;
-        
+
         console.log('[Reown] AppKit initialized successfully');
       } catch (err) {
         console.error('[Reown] Failed to initialize AppKit — wallet connections disabled:', err);
@@ -164,6 +200,7 @@ if (typeof window !== 'undefined') {
   }
 
   try {
+    // ensure global set for any consumers that import { config } from this file
     (window as any).__REOWN_WAGMI_CONFIG = config;
   } catch {}
 }
