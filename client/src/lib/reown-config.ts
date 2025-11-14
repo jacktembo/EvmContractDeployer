@@ -77,12 +77,10 @@ const wagmiChains = [
 
 /**
  * Build a minimal, safe fallback wagmi config.
- * IMPORTANT: autoConnect: false prevents wagmi from silently reconnecting on page load,
- * which is a typical cause of repeated signature / permission prompts.
+ * Note: wagmi v2+ doesn't have autoConnect option - use reconnectOnMount in WagmiProvider instead
  */
 const makeFallbackConfig = () =>
   createConfig({
-    autoConnect: false, // <- explicitly disable auto connect
     chains: wagmiChains,
     connectors: [
       // keep injected as the minimal connector; shimDisconnect reduces some re-prompt behavior
@@ -142,11 +140,9 @@ if (typeof window !== 'undefined') {
             connectors.push(
               walletConnect({
                 projectId,
-                // don't enable auto connect behavior here (walletConnect connector config varies by wagmi version)
-                // For walletConnect v2 + wagmi, you may need to pass additional options (relayUrl, metadata).
-                // We'll let the WagmiAdapter handle specifics, but avoid automatically calling connect anywhere.
-                showQrModal: true
-              } as any)
+                showQrModal: true,
+                metadata
+              })
             );
             console.log('[Reown] WalletConnect connector added');
           } catch (wcErr) {
@@ -175,13 +171,10 @@ if (typeof window !== 'undefined') {
 
         console.log('[Reown] AppKit instance created');
 
-        // Get the config from adapter (if provided). Ensure autoConnect is explicitly set false.
+        // Get the config from adapter (if provided)
         if (wagmiAdapter?.wagmiConfig) {
-          config = {
-            ...wagmiAdapter.wagmiConfig,
-            autoConnect: false
-          };
-          console.log('[Reown] Using wagmiConfig from adapter (autoConnect disabled)');
+          config = wagmiAdapter.wagmiConfig;
+          console.log('[Reown] Using wagmiConfig from adapter');
         } else {
           console.warn('[Reown] No wagmiConfig from adapter, using fallback');
           config = makeFallbackConfig();

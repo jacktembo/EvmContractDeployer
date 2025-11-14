@@ -5,7 +5,7 @@ import { pool } from "./db";
 import { registerRoutes } from "./routes";
 import { setupVite, serveStatic, log } from "./vite";
 import { seedTemplates } from "./seed-templates";
-import { config } from "../config";
+import { config } from "../config"; // dotenv is loaded here
 
 const app = express();
 

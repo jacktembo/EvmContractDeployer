@@ -1,12 +1,25 @@
 /**
  * Server-Side Configuration
  * 
+ * Configuration Loading Strategy (Layered Approach):
+ * 1. Replit Secrets / OS Environment Variables (highest priority)
+ * 2. .env file (fallback when OS env vars not set)
+ * 
+ * This means:
+ * - In Replit: Secrets are used (recommended approach)
+ * - In local/VPS: .env file is used as fallback
+ * - OS environment variables ALWAYS override .env file values
+ * 
  * For VPS deployment: Copy the .env.example file to .env and update all values
  * with your production credentials. The .env file will be read automatically.
  * 
  * IMPORTANT: This file is for SERVER-SIDE configuration only.
  * For client-side configuration, use client/src/config.ts
  */
+
+// Load .env file with override:false so OS environment variables take precedence
+import dotenv from "dotenv";
+dotenv.config({ override: false });
 
 // Helper to validate required environment variables
 function getRequiredEnv(key: string): string {
