@@ -53,6 +53,7 @@ export function useWalletAuth() {
 
   const authenticate = useCallback(async (walletAddress: string): Promise<boolean> => {
     if (!walletClient) {
+      console.error("[Auth] No wallet client available");
       const errorMsg = "Wallet connection required for authentication";
       setAuthState((prev) => ({ ...prev, error: errorMsg }));
       toast({
@@ -63,56 +64,27 @@ export function useWalletAuth() {
       return false;
     }
 
+    console.log("[Auth] Starting authentication for:", walletAddress);
     setAuthState((prev) => ({ ...prev, isAuthenticating: true, error: null }));
 
     try {
-      // Step 1: Request challenge from backend
-      const challengeResponse = await fetch("/api/auth/challenge", {
+      // Use simple direct authentication without signature verification
+      console.log("[Auth] Calling /api/auth/connect");
+      const connectResponse = await fetch("/api/auth/connect", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ walletAddress }),
         credentials: "include",
       });
 
-      if (!challengeResponse.ok) {
-        throw new Error("Failed to get authentication challenge");
+      if (!connectResponse.ok) {
+        const errorData = await connectResponse.json();
+        console.error("[Auth] Connect failed:", errorData);
+        throw new Error(errorData.error || "Failed to authenticate");
       }
 
-      const { message } = await challengeResponse.json();
-
-      // Step 2: Request signature using wagmi wallet client
-      let signature: string;
-      try {
-        signature = await walletClient.signMessage({ 
-          message 
-        });
-      } catch (signError: any) {
-        if (signError.code === 4001 || signError.message?.includes("rejected") || signError.message?.includes("denied")) {
-          toast({
-            title: "Signature Rejected",
-            description: "You must sign the message to authenticate",
-            variant: "destructive",
-          });
-        } else {
-          throw signError;
-        }
-        setAuthState((prev) => ({ ...prev, isAuthenticating: false }));
-        return false;
-      }
-
-      // Step 3: Verify signature with backend
-      const verifyResponse = await fetch("/api/auth/verify", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ walletAddress, signature }),
-        credentials: "include",
-      });
-
-      if (!verifyResponse.ok) {
-        throw new Error("Signature verification failed");
-      }
-
-      const { success } = await verifyResponse.json();
+      const { success } = await connectResponse.json();
+      console.log("[Auth] Connect response:", { success });
 
       if (success) {
         setAuthState({

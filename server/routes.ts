@@ -148,6 +148,29 @@ export async function registerRoutes(app: Express): Promise<Server> {
     });
   });
 
+  // Simple direct authentication - just trust the wallet connection
+  app.post("/api/auth/connect", async (req, res) => {
+    try {
+      const { walletAddress } = challengeRequestSchema.parse(req.body);
+      
+      // Directly authenticate the wallet without signature verification
+      req.session.walletAddress = walletAddress;
+      req.session.isAuthenticated = true;
+      
+      res.json({ 
+        success: true,
+        walletAddress,
+      });
+    } catch (error) {
+      if (error instanceof z.ZodError) {
+        res.status(400).json({ error: "Invalid wallet address" });
+      } else {
+        console.error("Error during direct connect:", error);
+        res.status(500).json({ error: "Failed to authenticate" });
+      }
+    }
+  });
+
   app.post("/api/compile", async (req, res) => {
     try {
       const validatedData = compileRequestSchema.parse(req.body);
