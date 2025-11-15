@@ -8,6 +8,18 @@ This project is a professional web-based platform designed for deploying Solidit
 
 Preferred communication style: Simple, everyday language.
 
+## Recent Changes (November 15, 2025)
+
+### Authentication Fix
+- **Issue**: Endless MetaMask signature prompts in production caused by `authenticate` function reference in useEffect dependencies
+- **Root Cause**: Wagmi's `walletClient` changes triggered function recreation, causing infinite authentication loop
+- **Solution**: Implemented single-attempt auto-authentication pattern using boolean ref tracking
+  - Removed `authenticate` from useEffect dependencies to prevent loops
+  - Added `hasAttemptedAutoAuthRef` to track authentication attempt per wallet connection
+  - Flag resets on disconnect or successful authentication
+  - Manual retry available via disconnect/reconnect or `ensureAuthenticated` function before deployments
+- **Replit Dev Compatibility**: Fallback wagmi configuration without WalletConnect to avoid domain allowlist errors on Replit development environment
+
 ## System Architecture
 
 ### Frontend Architecture

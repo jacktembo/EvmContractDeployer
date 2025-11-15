@@ -33,8 +33,11 @@ const projectId = clientConfig?.REOWN_PROJECT_ID ?? import.meta.env.VITE_REOWN_P
 // Origins / relay selection
 const origin = typeof window !== 'undefined' ? window.location.origin : '';
 const isLocal = origin.includes('localhost') || origin.includes('127.0.0.1');
-const useCloudRelay = import.meta.env.DEV || isLocal;
-const metadataUrl = import.meta.env.PROD ? origin : (useCloudRelay ? 'https://cloud.reown.com' : origin);
+const isReplitDev = origin.includes('replit.dev');
+// Use cloud relay only for localhost in DEV mode
+const useCloudRelay = isLocal && import.meta.env.DEV;
+// Always use the actual origin for metadata to avoid allowlist issues
+const metadataUrl = origin || 'https://cloud.reown.com';
 
 // metadata MUST match the domain registered in Reown dashboard when running PROD
 const metadata = {
@@ -110,6 +113,14 @@ let appKitInstance: any = null;
 if (typeof window !== 'undefined') {
   const globalAny = window as any;
 
+  // Clear cached instances on Replit dev to avoid WalletConnect allowlist errors
+  if (isReplitDev && (globalAny.__REOWN_WAGMI_CONFIG || globalAny.__REOWN_WAGMI_ADAPTER)) {
+    delete globalAny.__REOWN_WAGMI_CONFIG;
+    delete globalAny.__REOWN_WAGMI_ADAPTER;
+    delete globalAny.__REOWN_APPKIT_INITIALIZED;
+    console.log('[Reown] Cleared cached instances for Replit dev environment');
+  }
+
   // Reuse previously stored config/adapter if present
   if (globalAny.__REOWN_WAGMI_CONFIG && globalAny.__REOWN_WAGMI_ADAPTER) {
     config = globalAny.__REOWN_WAGMI_CONFIG;
@@ -118,7 +129,11 @@ if (typeof window !== 'undefined') {
   } else if (!globalAny.__REOWN_APPKIT_INITIALIZED) {
     globalAny.__REOWN_APPKIT_INITIALIZED = true;
 
-    if (!projectId || projectId.trim() === '') {
+    // Skip WagmiAdapter on Replit dev to avoid allowlist errors
+    if (isReplitDev) {
+      console.log('[Reown] Using fallback config on Replit dev (no WalletConnect to avoid allowlist errors)');
+      config = makeFallbackConfig();
+    } else if (!projectId || projectId.trim() === '') {
       console.warn(
         '[Reown] REOWN_PROJECT_ID not set. Wallet connections disabled. To enable, set REOWN_PROJECT_ID and whitelist your production domain in Reown dashboard.'
       );
@@ -134,8 +149,9 @@ if (typeof window !== 'undefined') {
           injected({ shimDisconnect: true })
         ];
 
-        // Add WalletConnect only if projectId and cloud relay allowed (avoids unnecessary initializations)
-        if (projectId && (useCloudRelay || import.meta.env.DEV)) {
+        // Add WalletConnect only for localhost (not Replit dev domains to avoid allowlist issues)
+        // For production, the domain must be whitelisted in Reown dashboard
+        if (projectId && useCloudRelay && !isReplitDev) {
           try {
             connectors.push(
               walletConnect({
@@ -148,6 +164,8 @@ if (typeof window !== 'undefined') {
           } catch (wcErr) {
             console.warn('[Reown] Could not create WalletConnect connector:', wcErr);
           }
+        } else if (isReplitDev) {
+          console.log('[Reown] WalletConnect disabled on Replit dev - using injected connector only');
         }
 
         wagmiAdapter = new WagmiAdapter({

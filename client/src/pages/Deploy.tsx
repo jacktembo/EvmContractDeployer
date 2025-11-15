@@ -96,6 +96,9 @@ export default function Deploy() {
   const leftPanelRef = useRef<ImperativePanelHandle>(null);
   const [isLeftPanelCollapsed, setIsLeftPanelCollapsed] = useState(false);
 
+  // Track auto-authentication attempt for wallet connection
+  const hasAttemptedAutoAuthRef = useRef<boolean>(false);
+
   // Fetch workspaces and auto-select first one
   const { data: workspaces = [] } = useQuery<Array<{ id: number; name: string }>>({
     queryKey: ['/api/workspaces'],
@@ -346,12 +349,18 @@ export default function Deploy() {
     }
   }, [chainId]);
 
-  // Auto-authenticate when wallet connects
+  // Auto-authenticate when wallet connects (single attempt, user can manually retry if needed)
   useEffect(() => {
-    if (isConnected && address && !isAuthenticated && !isAuthenticating) {
+    if (isConnected && address && !isAuthenticated && !isAuthenticating && !hasAttemptedAutoAuthRef.current) {
+      hasAttemptedAutoAuthRef.current = true;
       authenticate(address);
     }
-  }, [isConnected, address, isAuthenticated, isAuthenticating, authenticate]);
+    
+    // Reset flag when wallet disconnects or successfully authenticates
+    if (!isConnected || isAuthenticated) {
+      hasAttemptedAutoAuthRef.current = false;
+    }
+  }, [isConnected, address, isAuthenticated, isAuthenticating]);
 
   const handleSelectNetwork = async (network: Network) => {
     // Only update if wallet is not connected, or if the switch succeeds
