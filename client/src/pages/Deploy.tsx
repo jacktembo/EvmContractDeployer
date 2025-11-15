@@ -28,7 +28,7 @@ import { useAppKit, useAppKitAccount, useAppKitNetwork } from "@reown/appkit/rea
 import { mainnet, sepolia, bsc, bscTestnet, polygon, polygonAmoy, arbitrum, arbitrumSepolia, optimism, optimismSepolia, avalanche, avalancheFuji } from "@reown/appkit/networks";
 import type { AppKitNetwork } from "@reown/appkit/networks";
 import { ContractFactory } from "ethers";
-import { useConfig } from "wagmi";
+import { useConfig, useWalletClient } from "wagmi";
 import { getEthersSigner } from "@/lib/wagmi-ethers";
 import { ResizablePanelGroup, ResizablePanel, ResizableHandle } from "@/components/ui/resizable";
 import type { ImperativePanelHandle } from "react-resizable-panels";
@@ -70,6 +70,7 @@ export default function Deploy() {
   const { address, isConnected } = useAppKitAccount();
   const { chainId, switchNetwork } = useAppKitNetwork();
   const wagmiConfig = useConfig();
+  const { data: walletClient } = useWalletClient();
   const [code, setCode] = useState(INITIAL_CODE);
   const [solcVersion, setSolcVersion] = useState("0.8.20");
   const [fullCompilerVersion, setFullCompilerVersion] = useState<string | null>(null); // Full version with commit hash from compiler
@@ -351,7 +352,8 @@ export default function Deploy() {
 
   // Auto-authenticate when wallet connects (single attempt, user can manually retry if needed)
   useEffect(() => {
-    if (isConnected && address && !isAuthenticated && !isAuthenticating && !hasAttemptedAutoAuthRef.current) {
+    // Only attempt authentication when walletClient is available
+    if (isConnected && address && walletClient && !isAuthenticated && !isAuthenticating && !hasAttemptedAutoAuthRef.current) {
       hasAttemptedAutoAuthRef.current = true;
       authenticate(address);
     }
@@ -360,7 +362,7 @@ export default function Deploy() {
     if (!isConnected || isAuthenticated) {
       hasAttemptedAutoAuthRef.current = false;
     }
-  }, [isConnected, address, isAuthenticated, isAuthenticating]);
+  }, [isConnected, address, walletClient, isAuthenticated, isAuthenticating, authenticate]);
 
   const handleSelectNetwork = async (network: Network) => {
     // Only update if wallet is not connected, or if the switch succeeds
